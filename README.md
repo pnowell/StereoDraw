@@ -2,18 +2,26 @@
 
 This is a simple web app that keeps a blank canvas in memory that the user can draw on and generates a stereogram from it.
 
-Stereo Draw stereogram
-![Stereo Draw](img/stereo_draw_stereogram.png)
-
-Depth map
-![Stereo Draw depth map](img/stereo_draw_depth.png)
+[Open StereoDraw in Github Pages](https://pnowell.github.io/StereoDraw/)
 
 ## Interface
 
 Just move your mouse around on the canvas, click and drag to paint, and scroll the mouse wheel to adjust depth (scroll up to push
 the depth in further and scroll down to pull the depth out closer).
 
-You can also press the "c" key to clear the canvas and the "s" key to save the depth buffer and the stereogram as PNG files.
+### Keyboard hotkeys
+
++ The "c" key clears the canvas
++ The "s" key saves the depth buffer and the stereogram as PNG files
+  + You might need to grant permission to save multiple files
+
+## Example
+
+"Stereo Draw!" stereogram
+![Stereo Draw](img/stereo_draw_stereogram.png)
+
+Depth map
+![Stereo Draw depth map](img/stereo_draw_depth.png)
 
 ## Technical details
 
@@ -39,7 +47,7 @@ the depth map is white i.e. near).
 As we scan from left to right, we compute that offset and if it would have us copy a pixel at a negative X value, we instead
 generate random R, G and B values.
 
-There is one more subtle point.  If we did the above exactly as stated, then when the depth jumps down from close to far away,
+There is one more subtle point: if we did the above exactly as stated, then when the depth jumps down from close to far away,
 the pixel offset would suddenly increase and over the next few pixels, we would rescan a pattern of pixels that we've already
 copied once, which leads to a weird ghosting effect.  To avoid this, we keep track of the right-most copied pixel's x-coordinate
 as we scan across a row (initialized to zero), and each time we compute which pixel we'd like to copy from, if that desired pixel
