@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draw on Stereogram</title>
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Roboto', sans-serif;
+        margin: 0;
+        overflow: hidden;
+      }
+      .container {
+        max-width: none;
+        padding: 0;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .stereogram-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        cursor: none; /* Hide the default cursor */
+      }
+      #drawingCanvas, #cursorCanvas {
+        display: none;
+      }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container">
+        <canvas id="stereogramCanvas" class="stereogram-canvas"></canvas>
+        <canvas id="drawingCanvas"></canvas>
+        <canvas id="cursorCanvas"></canvas>
+    </div>
+    <script>
+       const stereogramCanvas = document.getElementById('stereogramCanvas');
+        const stereoCtx = stereogramCanvas.getContext('2d');
+        const drawingCanvas = document.getElementById('drawingCanvas');
+        const ctx = drawingCanvas.getContext('2d');
+        const cursorCanvas = document.getElementById('cursorCanvas');
+        const cursorCtx = cursorCanvas.getContext('2d');
+
+        // Physical display size (assuming a common DPI of 96, this will need calibration)
+        const DPI = 96;  //dots per inch
+        const MM_PER_INCH = 25.4;
+
+        function resizeCanvas() {
+            stereogramCanvas.width = window.innerWidth;
+            stereogramCanvas.height = window.innerHeight;
+            drawingCanvas.width = window.innerWidth;
+            drawingCanvas.height = window.innerHeight;
+            cursorCanvas.width = window.innerWidth;
+            cursorCanvas.height = window.innerHeight;
+            generateStereogram(false);
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        let isDrawing = false;
+        let currentColor = 38; // 15% of 255 is approximately 38
+        let cursorSize = 30;
+        let saveIndex = 1; // Initialize save index
+
+        function updateCursorPosition(event) {
+            const canvasRect = stereogramCanvas.getBoundingClientRect();
+            const actualX = event.clientX - canvasRect.left;
+            const actualY = event.clientY - canvasRect.top;
+            drawCursor(actualX, actualY, currentColor); // Draw the cursor on the cursor canvas.
+
+        }
+
+        function drawCircle(x, y, color) {
+            ctx.beginPath();
+            ctx.arc(x, y, cursorSize / 2, 0, 2 * Math.PI);
+            ctx.fillStyle = `rgb(${color}, ${color}, ${color})`;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function drawCursor(x, y, color) {
+            cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+            cursorCtx.drawImage(drawingCanvas, 0, 0);
+            // Draw larger white circle first
+            cursorCtx.beginPath();
+            cursorCtx.arc(x, y, cursorSize, 0, 2 * Math.PI); // Radius is now cursorSize, which is twice the normal radius
+            cursorCtx.fillStyle = 'rgb(255, 255, 255)';
+            cursorCtx.fill();
+            ctx.closePath();
+
+            // Then draw the current color circle
+            cursorCtx.beginPath();
+            cursorCtx.arc(x, y, cursorSize / 2, 0, 2 * Math.PI);
+            cursorCtx.fillStyle = `rgb(${color}, ${color}, ${color})`;
+            cursorCtx.fill();
+            ctx.closePath();
+        }
+
+
+        function startDrawing(event) {
+            isDrawing = true;
+            const canvasRect = stereogramCanvas.getBoundingClientRect();
+            const x = event.clientX - canvasRect.left;
+            const y = event.clientY - canvasRect.top;
+            drawCircle(x, y, currentColor);
+            generateStereogram(false);
+        }
+
+        function draw(event) {
+            if (!isDrawing) return;
+            const canvasRect = stereogramCanvas.getBoundingClientRect();
+            const x = event.clientX - canvasRect.left;
+            const y = event.clientY - canvasRect.top;
+            drawCircle(x, y, currentColor);
+            generateStereogram(false);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            generateStereogram(false);
+        }
+
+        function changeColor(event) {
+            currentColor = Math.max(0, Math.min(255, currentColor - event.deltaY / 10));
+            const canvasRect = stereogramCanvas.getBoundingClientRect();
+            const actualX = event.clientX - canvasRect.left;
+            const actualY = event.clientY - canvasRect.top;
+            drawCursor(actualX, actualY, currentColor);
+        }
+
+       function generateStereogram(forImage = false) {
+            if (stereogramCanvas.width <= 0 || stereogramCanvas.height <= 0) {
+                console.warn("Canvas has zero width or height. Skipping stereogram generation.");
+                return;
+            }
+
+            const width = stereogramCanvas.width;
+            const height = stereogramCanvas.height;
+
+            const sourceCanvas = forImage ? drawingCanvas : cursorCanvas;
+            const sourceCtx = forImage ? ctx : cursorCtx;
+            const imageData = sourceCtx.getImageData(0, 0, width, height);
+            const depthMap = imageData.data;
+
+            stereogramCanvas.width = width;
+            stereogramCanvas.height = height;
+            const output = stereoCtx.createImageData(width, height);
+            const outData = output.data;
+
+            let rightmostSampledX = 0;
+
+            for (let y = 0; y < height; y++) {
+                rightmostSampledX = 0;
+                for (let x = 0; x < width; x++) {
+                    const depthValue = depthMap[(x + y * width) * 4];
+
+                    // Convert depth value to disparity in mm (42mm for black, 35mm for white)
+                    const maxDisparityMM = 42;
+                    const minDisparityMM = 35;
+                    const disparityMM = ((255 - depthValue) / 255) * (maxDisparityMM - minDisparityMM) + minDisparityMM;
+
+                    // Convert mm to pixels
+                    const disparityPixels = Math.floor((disparityMM / MM_PER_INCH) * DPI);
+
+                    const sourceX = Math.floor(x - disparityPixels);
+
+                    if (sourceX >= rightmostSampledX) {
+                        outData[(x + y * width) * 4] = outData[(sourceX + y * width) * 4];
+                        outData[(x + y * width) * 4 + 1] = outData[(sourceX + y * width) * 4 + 1];
+                        outData[(x + y * width) * 4 + 2] = outData[(sourceX + y * width) * 4 + 2];
+                        outData[(x + y * width) * 4 + 3] = 255;
+                        rightmostSampledX = sourceX;
+                    } else {
+                        const r = Math.floor(Math.random() * 256);
+                        const g = Math.floor(Math.random() * 256);
+                        const b = Math.floor(Math.random() * 256);
+                        outData[(x + y * width) * 4] = r;
+                        outData[(x + y * width) * 4 + 1] = g;
+                        outData[(x + y * width) * 4 + 2] = b;
+                        outData[(x + y * width) * 4 + 3] = 255;
+                    }
+                }
+            }
+            stereoCtx.putImageData(output, 0, 0);
+        }
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        generateStereogram(false);
+
+        stereogramCanvas.addEventListener('mousedown', startDrawing);
+        stereogramCanvas.addEventListener('mousemove', draw);
+        stereogramCanvas.addEventListener('mouseup', stopDrawing);
+        stereogramCanvas.addEventListener('mouseleave', stopDrawing);
+        stereogramCanvas.addEventListener('wheel', changeColor);
+        stereogramCanvas.addEventListener('mousemove', (event) => {
+            updateCursorPosition(event);
+        });
+
+        stereogramCanvas.addEventListener('mouseleave', () => {
+            cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'c') {
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                generateStereogram(false);
+                const canvasRect = stereogramCanvas.getBoundingClientRect();
+                const actualX = event.clientX - canvasRect.left;
+                const actualY = event.clientY - canvasRect.top;
+                drawCursor(actualX, actualY, currentColor);
+            }
+             if (event.key === 's') {
+                saveImages();
+            }
+        });
+
+        setInterval(generateStereogram, 1000 / 30);
+
+        function saveImages() {
+            // Create a temporary canvas to hold the depth map data
+            const depthMapCanvas = document.createElement('canvas');
+            depthMapCanvas.width = drawingCanvas.width;
+            depthMapCanvas.height = drawingCanvas.height;
+            const depthMapCtx = depthMapCanvas.getContext('2d');
+             // Get the depth map data from the drawingCanvas
+            const depthMapData = ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+             //put the data into the depthMapCanvas
+            depthMapCtx.putImageData(depthMapData, 0, 0);
+
+            // Create URLs for the depth map and stereogram images
+            const depthMapURL = depthMapCanvas.toDataURL('image/png');
+
+            // Generate the stereogram *without* the cursor.
+            const cleanStereogramCanvas = document.createElement('canvas');
+            cleanStereogramCanvas.width = stereogramCanvas.width;
+            cleanStereogramCanvas.height = stereogramCanvas.height;
+            const cleanStereoCtx = cleanStereogramCanvas.getContext('2d');
+
+            // Generate stereogram for image.
+            generateStereogram(true);
+            const cleanStereogramURL = stereogramCanvas.toDataURL('image/png');
+            generateStereogram(false); //regenerate for display
+
+
+            // Create download links
+            const depthMapLink = document.createElement('a');
+            depthMapLink.href = depthMapURL;
+            depthMapLink.download = `${String(saveIndex).padStart(2, '0')}_depth.png`;
+            document.body.appendChild(depthMapLink);
+            depthMapLink.click();
+            document.body.removeChild(depthMapLink);
+
+            const stereogramLink = document.createElement('a');
+            stereogramLink.href = cleanStereogramURL;
+            stereogramLink.download = `${String(saveIndex).padStart(2, '0')}_stereo.png`;
+            document.body.appendChild(stereogramLink);
+            stereogramLink.click();
+            document.body.removeChild(stereogramLink);
+
+            // Increment the save index
+            saveIndex++;
+        }
+    </script>
+</body>
+</html>
