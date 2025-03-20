@@ -2,6 +2,12 @@
 
 This is a simple web app that keeps a blank canvas in memory that the user can draw on and generates a stereogram from it.
 
+Stereo Draw stereogram
+![Stereo Draw](img/stereo_draw_stereogram.png)
+
+Depth map
+![Stereo Draw depth map](img/stereo_draw_depth.png)
+
 ## Interface
 
 Just move your mouse around on the canvas, click and drag to paint, and scroll the mouse wheel to adjust depth (scroll up to push
